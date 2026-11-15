@@ -1,11 +1,13 @@
 // BoolWiz — truth table + Karnaugh map visualizer (vanilla JS, no dependencies).
-// Output values per minterm: null (unset) | 0 | 1 | 'X' (don't care).
+// Output values per cell: null (unset) | 0 | 1 | 'X' (don't care).
+// outputs[b][i] is output bit b at minterm i. A K-map is shown only for a single output bit.
 
 (function () {
   'use strict';
 
   const DEFAULT_NAMES = ['A', 'B', 'C', 'D', 'E'];
   const DEFAULT_N = 3;
+  const MAX_W = 8;                 // most output bits
   const STORE_KEY = 'boolwiz.tables.v1';
   const NAME_RE = /^[A-Za-z](?:_[0-9]{1,2})?$/; // A, B, ..., A_1, A_2, ..., A_99
   const NAME_MAX = 4;
@@ -14,12 +16,12 @@
 
   let n = DEFAULT_N;
   let names = [...DEFAULT_NAMES];  // variable names (validated)
-  let outName = DEFAULT_OUT;       // output column name (validated like a variable)
-  let outputs = [];                // length 2^n
-  const ttEls = [];                // truth-table output buttons, indexed by minterm
-  const kEls = [];                 // K-map cell buttons, indexed by minterm
+  let outNames = [DEFAULT_OUT];    // one name per output bit (validated)
+  let outputs = [];                // outputs[b][i]: one column per output bit, 2^n cells each
+  const ttEls = [];                // ttEls[b][i]: truth-table output buttons
+  const kEls = [];                 // K-map cell buttons by minterm (only with one output bit)
   const varHeads = [];             // truth-table header cells for the variables
-  let outHead = null;              // truth-table header cell for the output
+  const outHeads = [];             // truth-table header cells for the outputs
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -55,30 +57,33 @@
     return 'st-x';
   }
 
-  function paintCell(btn, i) {
-    const v = outputs[i];
+  // A fresh set of output columns, each with 2^n unset cells.
+  function newCols(w) {
+    return Array.from({ length: w }, () => new Array(1 << n).fill(null));
+  }
+
+  function paintCell(btn, b, i) {
+    const v = outputs[b][i];
     btn.classList.remove('st-blank', 'st-0', 'st-1', 'st-x');
     btn.classList.add(stateClass(v));
     btn.querySelector('.v').textContent = v === null ? '' : String(v);
-    btn.setAttribute('aria-label', `minterm ${i}, output ${v === null ? 'unset' : v}`);
+    btn.setAttribute('aria-label', `minterm ${i}, ${outNames[b]} ${v === null ? 'unset' : v}`);
   }
 
-  function setOutput(i, v) {
-    outputs[i] = v;
-    paintCell(ttEls[i], i);
-    paintCell(kEls[i], i);
+  function setOutput(i, v, b = 0) {
+    outputs[b][i] = v;
+    paintCell(ttEls[b][i], b, i);
+    if (kEls[i]) paintCell(kEls[i], 0, i);
     updateStats();
   }
 
   function paintAll() {
-    outputs.forEach((_, i) => {
-      paintCell(ttEls[i], i);
-      paintCell(kEls[i], i);
-    });
+    outputs.forEach((col, b) => col.forEach((_, i) => paintCell(ttEls[b][i], b, i)));
+    kEls.forEach((btn, i) => paintCell(btn, 0, i));
     updateStats();
   }
 
-  // ---------- Variable names ----------
+  // ---------- Variable and output names ----------
 
   function uniqueIgnoreCase(list) {
     const seen = new Set();
@@ -90,26 +95,32 @@
     return true;
   }
 
-  // Valid pattern and unique among the active variables (case-insensitive).
-  function isValidName(name, index) {
+  // Valid pattern, and unique (case-insensitive) among the active variables and the outputs.
+  function isValidName(name, j) {
     if (!NAME_RE.test(name)) return false;
-    const others = names.slice(0, n).filter((_, j) => j !== index);
-    return uniqueIgnoreCase([...others, outName, name]);
+    const others = names.slice(0, n).filter((_, k) => k !== j);
+    return uniqueIgnoreCase([...others, ...outNames, name]);
   }
 
-  // Output name: same pattern, must differ from the active variable names.
-  function isValidOutName(name) {
+  // Output name b: same pattern, unique among the active variables and the other outputs.
+  function isValidOutName(name, b) {
     if (!NAME_RE.test(name)) return false;
-    return uniqueIgnoreCase([...names.slice(0, n), name]);
+    const others = outNames.filter((_, k) => k !== b);
+    return uniqueIgnoreCase([...names.slice(0, n), ...others, name]);
   }
 
-  // Keep the preferred output name if it is valid and free, else the first free default.
-  function pickOutName(preferred, taken) {
-    if (typeof preferred === 'string' && NAME_RE.test(preferred)
-        && uniqueIgnoreCase([...taken, preferred])) {
-      return preferred;
+  // Keep each preferred output name that is valid and free; otherwise use the first free default.
+  function fixOutNames(list, taken, w) {
+    const out = [];
+    for (let b = 0; b < w; b++) {
+      const pref = Array.isArray(list) ? list[b] : undefined;
+      if (typeof pref === 'string' && NAME_RE.test(pref) && uniqueIgnoreCase([...taken, ...out, pref])) {
+        out.push(pref);
+      } else {
+        out.push([DEFAULT_OUT, ...LETTERS.split('')].find((c) => uniqueIgnoreCase([...taken, ...out, c])));
+      }
     }
-    return [DEFAULT_OUT, ...LETTERS.split('')].find((c) => uniqueIgnoreCase([...taken, c]));
+    return out;
   }
 
   // Render a name LaTeX-style: A_1 -> A with subscript 1. Input is always validated.
@@ -134,43 +145,41 @@
   // ---------- Variables panel ----------
 
   function syncSegButtons() {
-    document.querySelectorAll('.seg').forEach((b) => {
+    document.querySelectorAll('.seg[data-n]').forEach((b) => {
       b.setAttribute('aria-pressed', String(Number(b.dataset.n) === n));
+    });
+    document.querySelectorAll('.seg[data-w]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.w) === outputs.length));
     });
   }
 
   function buildVarInputs() {
     const host = $('#var-names');
     host.innerHTML = '';
-    for (let j = 0; j < n; j++) {
+
+    const addField = (cap, value, key, val) => {
       const field = el('label', 'var-field');
-      const cap = el('span', 'var-cap');
-      cap.textContent = `Variable ${j + 1}`;
+      const capEl = el('span', 'var-cap');
+      capEl.textContent = cap;
       const input = el('input', 'vname');
       input.type = 'text';
       input.maxLength = NAME_MAX;
-      input.value = names[j];
-      input.dataset.j = j;
+      input.value = value;
+      input.dataset[key] = val;
       input.autocomplete = 'off';
       input.spellcheck = false;
       input.setAttribute('aria-describedby', 'var-hint');
-      field.append(cap, input);
+      field.append(capEl, input);
       host.append(field);
-    }
+    };
 
-    const outField = el('label', 'var-field');
-    const outCap = el('span', 'var-cap');
-    outCap.textContent = 'Output';
-    const outInput = el('input', 'vname');
-    outInput.type = 'text';
-    outInput.maxLength = NAME_MAX;
-    outInput.value = outName;
-    outInput.dataset.out = '1';
-    outInput.autocomplete = 'off';
-    outInput.spellcheck = false;
-    outInput.setAttribute('aria-describedby', 'var-hint');
-    outField.append(outCap, outInput);
-    host.append(outField);
+    for (let j = 0; j < n; j++) {
+      addField(`Variable ${j + 1}`, names[j], 'j', j);
+    }
+    for (let b = 0; b < outputs.length; b++) {
+      const cap = outputs.length === 1 ? 'Output' : `Output ${b + 1}`;
+      addField(cap, outNames[b], 'b', b);
+    }
   }
 
   // ---------- Truth table ----------
@@ -180,6 +189,10 @@
     table.innerHTML = '';
     ttEls.length = 0;
     varHeads.length = 0;
+    outHeads.length = 0;
+
+    const w = outputs.length;
+    for (let b = 0; b < w; b++) ttEls.push([]);
 
     const thead = el('thead');
     const hr = el('tr');
@@ -195,14 +208,16 @@
       hr.append(th);
     }
 
-    const thOut = el('th', 'out-h');
-    thOut.innerHTML = nameHTML(outName);
-    outHead = thOut;
-    hr.append(thOut);
+    for (let b = 0; b < w; b++) {
+      const th = el('th', b === 0 ? 'out-h out-first' : 'out-h');
+      th.innerHTML = nameHTML(outNames[b]);
+      outHeads.push(th);
+      hr.append(th);
+    }
     thead.append(hr);
 
     const tbody = el('tbody');
-    for (let i = 0; i < outputs.length; i++) {
+    for (let i = 0; i < (1 << n); i++) {
       const tr = el('tr');
 
       const idx = el('td', 'idx');
@@ -215,15 +230,18 @@
         tr.append(td);
       }
 
-      const outTd = el('td', 'out-td');
-      const btn = el('button', 'out');
-      btn.type = 'button';
-      btn.dataset.i = i;
-      btn.innerHTML = '<span class="v"></span>';
-      outTd.append(btn);
-      tr.append(outTd);
+      for (let b = 0; b < w; b++) {
+        const outTd = el('td', b === 0 ? 'out-td out-first' : 'out-td');
+        const btn = el('button', 'out');
+        btn.type = 'button';
+        btn.dataset.i = i;
+        btn.dataset.b = b;
+        btn.innerHTML = '<span class="v"></span>';
+        outTd.append(btn);
+        tr.append(outTd);
+        ttEls[b][i] = btn;
+      }
 
-      ttEls[i] = btn;
       tbody.append(tr);
     }
 
@@ -231,10 +249,8 @@
   }
 
   function refreshHeaders() {
-    for (let j = 0; j < n; j++) {
-      varHeads[j].innerHTML = nameHTML(names[j]);
-    }
-    if (outHead) outHead.innerHTML = nameHTML(outName);
+    varHeads.forEach((th, j) => { th.innerHTML = nameHTML(names[j]); });
+    outHeads.forEach((th, b) => { th.innerHTML = nameHTML(outNames[b]); });
   }
 
   // ---------- K-map ----------
@@ -243,6 +259,7 @@
     const host = $('#kmap');
     host.innerHTML = '';
     kEls.length = 0;
+    if (outputs.length > 1) return; // a K-map needs a single output bit
 
     const { r, c } = layoutFor(n);
     const extra = n - r - c;          // 0, or 1 (E) for five variables
@@ -318,14 +335,21 @@
 
   function updateStats() {
     let ones = 0, zeros = 0, dc = 0, unset = 0;
-    outputs.forEach((v) => {
+    outputs.forEach((col) => col.forEach((v) => {
       if (v === null) unset++;
       else if (v === 0) zeros++;
       else if (v === 1) ones++;
       else dc++;
-    });
+    }));
     $('#stats').textContent =
       `Ones ${ones} · Zeros ${zeros} · X ${dc} · Unset ${unset}`;
+  }
+
+  // The K-map panel is shown only for a single output bit.
+  function syncKmapVisibility() {
+    const single = outputs.length === 1;
+    $('.panel-km').hidden = !single;
+    $('#km-note').hidden = single;
   }
 
   // ---------- Build / state changes ----------
@@ -334,31 +358,49 @@
     buildVarInputs();
     buildTable();
     buildKmap();
+    syncKmapVisibility();
     syncSegButtons();
     paintAll();
   }
 
   function setN(newN) {
     n = newN;
-    outName = pickOutName(outName, names.slice(0, n));
-    outputs = new Array(1 << n).fill(null); // minterm meanings change, so start fresh
+    outNames = fixOutNames(outNames, names.slice(0, n), outputs.length);
+    outputs = newCols(outputs.length); // minterm meanings change, so start fresh
+    rebuildAll();
+  }
+
+  // Changing the output width keeps existing bit columns; new ones start unset.
+  function setW(newW) {
+    const old = outputs;
+    outputs = Array.from({ length: newW }, (_, b) => (old[b] ? old[b] : new Array(1 << n).fill(null)));
+    outNames = fixOutNames(outNames, names.slice(0, n), newW);
     rebuildAll();
   }
 
   function clearOutputs() {
-    outputs.fill(null);
+    outputs.forEach((col) => col.fill(null));
     paintAll();
   }
 
   // ---------- Local storage: saved tables ----------
+
+  // Records hold output columns in `outCols`; older ones hold one column in `outputs`.
+  function recordCols(r) {
+    if (Array.isArray(r.outCols)) return r.outCols;
+    if (Array.isArray(r.outputs)) return [r.outputs];
+    return null;
+  }
 
   function isValidRecord(r) {
     if (!r || typeof r !== 'object') return false;
     if (typeof r.name !== 'string' || !r.name.trim()) return false;
     if (typeof r.savedAt !== 'string') return false;
     if (!Number.isInteger(r.n) || r.n < 2 || r.n > 5) return false;
-    if (!Array.isArray(r.outputs) || r.outputs.length !== (1 << r.n)) return false;
-    return r.outputs.every((v) => v === null || v === 0 || v === 1 || v === 'X');
+    const cols = recordCols(r);
+    if (!cols || cols.length < 1 || cols.length > MAX_W) return false;
+    return cols.every((col) => Array.isArray(col) && col.length === (1 << r.n)
+      && col.every((v) => v === null || v === 0 || v === 1 || v === 'X'));
   }
 
   function readStore() {
@@ -388,8 +430,13 @@
   function loadRecord(rec) {
     n = rec.n;
     names = sanitizeNames(rec.names);
-    outName = pickOutName(rec.outName, names.slice(0, n));
-    outputs = rec.outputs.slice();
+    const cols = recordCols(rec).map((col) => col.slice());
+    outputs = cols;
+    outNames = fixOutNames(
+      Array.isArray(rec.outNames) ? rec.outNames : [rec.outName],
+      names.slice(0, n),
+      cols.length,
+    );
     rebuildAll();
     $('#save-name').value = rec.name;
   }
@@ -408,11 +455,13 @@
       const title = el('strong');
       title.textContent = rec.name;
       const meta = el('small');
+      const cols = recordCols(rec);
       const rows = 1 << rec.n;
-      const filled = rec.outputs.filter((v) => v !== null).length;
+      const filled = cols.reduce((s, col) => s + col.filter((v) => v !== null).length, 0);
       const vars = sanitizeNames(rec.names).slice(0, rec.n).join(', ');
+      const outs = cols.length > 1 ? `${cols.length} outputs` : '1 output';
       meta.textContent =
-        `${rec.n} variables (${vars}) · ${filled}/${rows} set · ` +
+        `${rec.n} variables (${vars}) · ${outs} · ${filled}/${rows * cols.length} set · ` +
         new Date(rec.savedAt).toLocaleString();
       info.append(title, meta);
 
@@ -539,9 +588,9 @@
     drawCentered(ctx, String(v), cx, cy, size);
   }
 
-  // One truth-table block: m | variables | F, rows from..from+count-1.
+  // One truth-table block: m | variables | outputs, rows from..from+count-1.
   function drawTruthTable(ctx, x, y, from, count) {
-    const w = EX.idxW + n * EX.varW + EX.outW;
+    const w = EX.idxW + n * EX.varW + outputs.length * EX.outW;
     const h = EX.hdr + count * EX.row;
     const varsX = x + EX.idxW;
     const outX = varsX + n * EX.varW;
@@ -549,7 +598,7 @@
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, w, h);
 
-    // Header: black "m" cell, variable names (repeated on every block), F
+    // Header: black "m" cell, variable names and output names (repeated on every block)
     ctx.fillStyle = '#000';
     ctx.fillRect(x, y, EX.idxW, EX.hdr);
     ctx.fillStyle = '#fff';
@@ -560,8 +609,11 @@
       const tw = nameWidth(ctx, names[j], 17);
       drawName(ctx, names[j], cx - tw / 2, y + EX.hdr / 2, 17);
     }
-    const ow = nameWidth(ctx, outName, 17);
-    drawName(ctx, outName, outX + EX.outW / 2 - ow / 2, y + EX.hdr / 2, 17);
+    for (let b = 0; b < outputs.length; b++) {
+      const cx = outX + b * EX.outW + EX.outW / 2;
+      const tw = nameWidth(ctx, outNames[b], 17);
+      drawName(ctx, outNames[b], cx - tw / 2, y + EX.hdr / 2, 17);
+    }
 
     // Body
     for (let i = 0; i < count; i++) {
@@ -574,7 +626,9 @@
         const bit = (m >> (n - 1 - j)) & 1;
         drawCentered(ctx, String(bit), varsX + j * EX.varW + EX.varW / 2, cy, 15, 400);
       }
-      drawState(ctx, outputs[m], outX, ry, EX.outW, EX.row, 16);
+      for (let b = 0; b < outputs.length; b++) {
+        drawState(ctx, outputs[b][m], outX + b * EX.outW, ry, EX.outW, EX.row, 16);
+      }
     }
 
     // Grid
@@ -591,9 +645,14 @@
       ctx.moveTo(vx, y);
       ctx.lineTo(vx, y + h);
     }
+    for (let b = 1; b < outputs.length; b++) {
+      const ox = outX + b * EX.outW;
+      ctx.moveTo(ox, y);
+      ctx.lineTo(ox, y + h);
+    }
     ctx.stroke();
 
-    // Heavier rules: under the header, and beside the minterm and output columns
+    // Heavier rules: under the header, and beside the minterm and first output columns
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(x, y + EX.hdr);
@@ -671,11 +730,11 @@
           const cc = gray(m);
           const idx = (((rc << c) | cc) << extra) | p; // same mapping as buildKmap
           const cx = gx + m * EX.cellW;
-          drawState(ctx, outputs[idx], cx, ry, EX.cellW, EX.cellH, 22);
+          drawState(ctx, outputs[0][idx], cx, ry, EX.cellW, EX.cellH, 22);
           exFont(ctx, 9, 400);
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillStyle = outputs[idx] === 1 ? '#fff' : '#000';
+          ctx.fillStyle = outputs[0][idx] === 1 ? '#fff' : '#000';
           ctx.fillText(String(idx), cx + 3, ry + 2);
         }
       }
@@ -706,24 +765,26 @@
   }
 
   // Draws the whole export into the canvas. Four or more variables split the truth table
-  // into two side-by-side halves, each with the variable header.
+  // into two side-by-side halves, each with the variable header. The K-map is left out
+  // when there is more than one output bit.
   function renderExport(canvas) {
     const ctx = canvas.getContext('2d');
     const S = Math.max(2, window.devicePixelRatio || 1);
     const halves = n >= 4;
     const rowsPerBlock = halves ? 1 << (n - 1) : 1 << n;
-    const blockW = EX.idxW + n * EX.varW + EX.outW;
+    const blockW = EX.idxW + n * EX.varW + outputs.length * EX.outW;
     const ttW = halves ? blockW * 2 + EX.halfGap : blockW;
     const ttH = EX.hdr + rowsPerBlock * EX.row;
 
+    const showKmap = outputs.length === 1;
     const { r, c } = layoutFor(n);
     const extra = n - r - c;
     const panels = 1 << extra;
     const mapW = EX.rhW + (1 << c) * EX.cellW;
-    const kW = panels * mapW + (panels - 1) * EX.mapGap;
-    const kH = (extra ? EX.titleH : 0) + EX.corner + (1 << r) * EX.cellH;
+    const kW = showKmap ? panels * mapW + (panels - 1) * EX.mapGap : 0;
+    const kH = showKmap ? (extra ? EX.titleH : 0) + EX.corner + (1 << r) * EX.cellH : 0;
 
-    const W = EX.pad * 2 + ttW + EX.gap + kW;
+    const W = EX.pad * 2 + ttW + (showKmap ? EX.gap + kW : 0);
     const totalH = EX.pad * 2 + Math.max(ttH, kH);
 
     canvas.width = Math.round(W * S);
@@ -739,7 +800,7 @@
     if (halves) {
       drawTruthTable(ctx, EX.pad + blockW + EX.halfGap, EX.pad, rowsPerBlock, rowsPerBlock);
     }
-    drawKmap(ctx, EX.pad + ttW + EX.gap, EX.pad);
+    if (showKmap) drawKmap(ctx, EX.pad + ttW + EX.gap, EX.pad);
 
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
@@ -762,9 +823,15 @@
 
   // ---------- Events ----------
 
-  document.querySelectorAll('.seg').forEach((b) => {
+  document.querySelectorAll('.seg[data-n]').forEach((b) => {
     b.addEventListener('click', () => {
       if (Number(b.dataset.n) !== n) setN(Number(b.dataset.n));
+    });
+  });
+
+  document.querySelectorAll('.seg[data-w]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (Number(b.dataset.w) !== outputs.length) setW(Number(b.dataset.w));
     });
   });
 
@@ -773,21 +840,23 @@
   $('#reset').addEventListener('click', () => {
     names = [...DEFAULT_NAMES];
     n = DEFAULT_N;
-    outName = DEFAULT_OUT;
-    outputs = new Array(1 << n).fill(null);
+    outNames = [DEFAULT_OUT];
+    outputs = newCols(1);
     rebuildAll();
   });
 
-  // Variable names: accept valid edits live, flag invalid ones, revert on blur.
+  // Variable and output names: accept valid edits live, flag invalid ones, revert on blur.
   $('#var-names').addEventListener('input', (e) => {
     const input = e.target.closest('input.vname');
     if (!input) return;
     const value = input.value;
-    if (input.dataset.out) {
-      if (isValidOutName(value)) {
+    if (input.dataset.b !== undefined) {
+      const b = Number(input.dataset.b);
+      if (isValidOutName(value, b)) {
         input.classList.remove('bad');
-        outName = value;
+        outNames[b] = value;
         refreshHeaders();
+        paintAll();
       } else {
         input.classList.add('bad');
       }
@@ -809,34 +878,41 @@
     const input = e.target.closest('input.vname');
     if (!input) return;
     input.classList.remove('bad');
-    input.value = input.dataset.out ? outName : names[Number(input.dataset.j)];
+    input.value = input.dataset.b !== undefined
+      ? outNames[Number(input.dataset.b)]
+      : names[Number(input.dataset.j)];
   });
 
   $('#tt').addEventListener('click', (e) => {
     const btn = e.target.closest('button.out');
     if (!btn) return;
     const i = Number(btn.dataset.i);
-    setOutput(i, nextValue(outputs[i]));
+    const b = Number(btn.dataset.b);
+    setOutput(i, nextValue(outputs[b][i]), b);
   });
 
   $('#tt').addEventListener('keydown', (e) => {
     const btn = e.target.closest('button.out');
     if (!btn) return;
     const i = Number(btn.dataset.i);
+    const b = Number(btn.dataset.b);
     const k = e.key;
 
     if (k === '0' || k === '1') {
-      setOutput(i, Number(k));
+      setOutput(i, Number(k), b);
     } else if (k === 'x' || k === 'X') {
-      setOutput(i, 'X');
+      setOutput(i, 'X', b);
     } else if (k === 'Backspace' || k === 'Delete') {
-      setOutput(i, null);
-    } else if (k === 'ArrowUp' || k === 'ArrowDown') {
-      const j = i + (k === 'ArrowUp' ? -1 : 1);
-      if (ttEls[j]) {
-        e.preventDefault();
-        ttEls[j].focus();
-      }
+      setOutput(i, null, b);
+    } else if (k === 'ArrowUp' || k === 'ArrowDown' || k === 'ArrowLeft' || k === 'ArrowRight') {
+      // Up/Down move down the column; Left/Right move to the same row in a neighbouring bit.
+      const dRow = k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0;
+      const dCol = k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0;
+      const col = ttEls[b + dCol];
+      const target = col ? col[i + dRow] : undefined;
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
       return;
     } else {
       return;
@@ -848,7 +924,7 @@
     const btn = e.target.closest('button.kcell');
     if (!btn) return;
     const i = Number(btn.dataset.i);
-    setOutput(i, nextValue(outputs[i]));
+    setOutput(i, nextValue(outputs[0][i]), 0);
   });
 
   $('#export').addEventListener('click', () => {
@@ -874,8 +950,8 @@
       savedAt: new Date().toISOString(),
       n,
       names: names.slice(),
-      outName,
-      outputs: outputs.slice(),
+      outNames: outNames.slice(),
+      outCols: outputs.map((col) => col.slice()),
     };
     const existing = records.findIndex((r) => r.name === name);
     const verb = existing >= 0 ? 'Updated' : 'Saved';
@@ -928,7 +1004,7 @@
 
   // ---------- Init ----------
 
-  outputs = new Array(1 << n).fill(null);
+  outputs = newCols(1);
   rebuildAll();
   renderSaved();
 })();

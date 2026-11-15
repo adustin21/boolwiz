@@ -28,9 +28,22 @@
           <button type="button" class="seg" data-n="5" aria-pressed="false">5</button>
         </div>
       </div>
+      <div class="var-count">
+        <span class="label" id="width-label">Output bits</span>
+        <div class="seg-group" role="group" aria-labelledby="width-label">
+          <button type="button" class="seg" data-w="1" aria-pressed="true">1</button>
+          <button type="button" class="seg" data-w="2" aria-pressed="false">2</button>
+          <button type="button" class="seg" data-w="3" aria-pressed="false">3</button>
+          <button type="button" class="seg" data-w="4" aria-pressed="false">4</button>
+          <button type="button" class="seg" data-w="5" aria-pressed="false">5</button>
+          <button type="button" class="seg" data-w="6" aria-pressed="false">6</button>
+          <button type="button" class="seg" data-w="7" aria-pressed="false">7</button>
+          <button type="button" class="seg" data-w="8" aria-pressed="false">8</button>
+        </div>
+      </div>
       <div class="var-names" id="var-names"></div>
     </div>
-    <p class="hint" id="var-hint">Letter, optionally with a subscript: A, B, A_1, A_2 (up to 4 characters). The output name follows the same rules and must differ from the variable names.</p>
+    <p class="hint" id="var-hint">Letter, optionally with a subscript: A, B, A_1, A_2 (up to 4 characters). Output names follow the same rules and must differ from the variable names and from each other.</p>
   </section>
 
   <main class="panels">
@@ -40,6 +53,7 @@
         <table class="tt" id="tt"></table>
       </div>
       <div class="stats" id="stats"></div>
+      <p class="hint" id="km-note" hidden>Karnaugh map hidden: it needs a single output bit. Set Output bits to 1 to show it.</p>
     </section>
 
     <section class="panel panel-km" aria-labelledby="km-title">

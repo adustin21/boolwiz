@@ -176,12 +176,12 @@ sub {
   vertical-align: -0.35em;
 }
 
-/* Output column: separated from the inputs by a heavy double rule */
-table.tt th.out-h {
+/* First output column: separated from the inputs by a heavy double rule */
+table.tt th.out-first {
   border-left: 4px double #000;
 }
 
-table.tt td.out-td {
+table.tt td.out-first {
   padding: 0;
   border-left: 4px double #000;
 }
