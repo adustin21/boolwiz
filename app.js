@@ -10,13 +10,16 @@
   const NAME_RE = /^[A-Za-z](?:_[0-9]{1,2})?$/; // A, B, ..., A_1, A_2, ..., A_99
   const NAME_MAX = 4;
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const DEFAULT_OUT = 'F';
 
   let n = DEFAULT_N;
   let names = [...DEFAULT_NAMES];  // variable names (validated)
+  let outName = DEFAULT_OUT;       // output column name (validated like a variable)
   let outputs = [];                // length 2^n
   const ttEls = [];                // truth-table output buttons, indexed by minterm
   const kEls = [];                 // K-map cell buttons, indexed by minterm
   const varHeads = [];             // truth-table header cells for the variables
+  let outHead = null;              // truth-table header cell for the output
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -91,7 +94,22 @@
   function isValidName(name, index) {
     if (!NAME_RE.test(name)) return false;
     const others = names.slice(0, n).filter((_, j) => j !== index);
-    return uniqueIgnoreCase([...others, name]);
+    return uniqueIgnoreCase([...others, outName, name]);
+  }
+
+  // Output name: same pattern, must differ from the active variable names.
+  function isValidOutName(name) {
+    if (!NAME_RE.test(name)) return false;
+    return uniqueIgnoreCase([...names.slice(0, n), name]);
+  }
+
+  // Keep the preferred output name if it is valid and free, else the first free default.
+  function pickOutName(preferred, taken) {
+    if (typeof preferred === 'string' && NAME_RE.test(preferred)
+        && uniqueIgnoreCase([...taken, preferred])) {
+      return preferred;
+    }
+    return [DEFAULT_OUT, ...LETTERS.split('')].find((c) => uniqueIgnoreCase([...taken, c]));
   }
 
   // Render a name LaTeX-style: A_1 -> A with subscript 1. Input is always validated.
@@ -139,6 +157,20 @@
       field.append(cap, input);
       host.append(field);
     }
+
+    const outField = el('label', 'var-field');
+    const outCap = el('span', 'var-cap');
+    outCap.textContent = 'Output';
+    const outInput = el('input', 'vname');
+    outInput.type = 'text';
+    outInput.maxLength = NAME_MAX;
+    outInput.value = outName;
+    outInput.dataset.out = '1';
+    outInput.autocomplete = 'off';
+    outInput.spellcheck = false;
+    outInput.setAttribute('aria-describedby', 'var-hint');
+    outField.append(outCap, outInput);
+    host.append(outField);
   }
 
   // ---------- Truth table ----------
@@ -164,7 +196,8 @@
     }
 
     const thOut = el('th', 'out-h');
-    thOut.textContent = 'F';
+    thOut.innerHTML = nameHTML(outName);
+    outHead = thOut;
     hr.append(thOut);
     thead.append(hr);
 
@@ -201,6 +234,7 @@
     for (let j = 0; j < n; j++) {
       varHeads[j].innerHTML = nameHTML(names[j]);
     }
+    if (outHead) outHead.innerHTML = nameHTML(outName);
   }
 
   // ---------- K-map ----------
@@ -306,6 +340,7 @@
 
   function setN(newN) {
     n = newN;
+    outName = pickOutName(outName, names.slice(0, n));
     outputs = new Array(1 << n).fill(null); // minterm meanings change, so start fresh
     rebuildAll();
   }
@@ -353,6 +388,7 @@
   function loadRecord(rec) {
     n = rec.n;
     names = sanitizeNames(rec.names);
+    outName = pickOutName(rec.outName, names.slice(0, n));
     outputs = rec.outputs.slice();
     rebuildAll();
     $('#save-name').value = rec.name;
@@ -524,7 +560,8 @@
       const tw = nameWidth(ctx, names[j], 17);
       drawName(ctx, names[j], cx - tw / 2, y + EX.hdr / 2, 17);
     }
-    drawCentered(ctx, 'F', outX + EX.outW / 2, y + EX.hdr / 2, 15);
+    const ow = nameWidth(ctx, outName, 17);
+    drawName(ctx, outName, outX + EX.outW / 2 - ow / 2, y + EX.hdr / 2, 17);
 
     // Body
     for (let i = 0; i < count; i++) {
@@ -736,6 +773,7 @@
   $('#reset').addEventListener('click', () => {
     names = [...DEFAULT_NAMES];
     n = DEFAULT_N;
+    outName = DEFAULT_OUT;
     outputs = new Array(1 << n).fill(null);
     rebuildAll();
   });
@@ -744,8 +782,18 @@
   $('#var-names').addEventListener('input', (e) => {
     const input = e.target.closest('input.vname');
     if (!input) return;
-    const j = Number(input.dataset.j);
     const value = input.value;
+    if (input.dataset.out) {
+      if (isValidOutName(value)) {
+        input.classList.remove('bad');
+        outName = value;
+        refreshHeaders();
+      } else {
+        input.classList.add('bad');
+      }
+      return;
+    }
+    const j = Number(input.dataset.j);
     if (isValidName(value, j)) {
       input.classList.remove('bad');
       names[j] = value;
@@ -761,7 +809,7 @@
     const input = e.target.closest('input.vname');
     if (!input) return;
     input.classList.remove('bad');
-    input.value = names[Number(input.dataset.j)];
+    input.value = input.dataset.out ? outName : names[Number(input.dataset.j)];
   });
 
   $('#tt').addEventListener('click', (e) => {
@@ -826,6 +874,7 @@
       savedAt: new Date().toISOString(),
       n,
       names: names.slice(),
+      outName,
       outputs: outputs.slice(),
     };
     const existing = records.findIndex((r) => r.name === name);
