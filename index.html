@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BoolWiz — K-Map &amp; Truth Table</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>BoolWiz</h1>
+    <div class="controls">
+      <button type="button" id="clear">Clear</button>
+      <button type="button" id="reset">Reset</button>
+    </div>
+  </header>
+
+  <section class="panel panel-vars" aria-labelledby="vars-title">
+    <h2 id="vars-title">Variables</h2>
+    <div class="var-row">
+      <div class="var-count">
+        <span class="label" id="count-label">Count</span>
+        <div class="seg-group" role="group" aria-labelledby="count-label">
+          <button type="button" class="seg" data-n="2" aria-pressed="false">2</button>
+          <button type="button" class="seg" data-n="3" aria-pressed="true">3</button>
+          <button type="button" class="seg" data-n="4" aria-pressed="false">4</button>
+          <button type="button" class="seg" data-n="5" aria-pressed="false">5</button>
+        </div>
+      </div>
+      <div class="var-names" id="var-names"></div>
+    </div>
+    <p class="hint" id="var-hint">Letter, optionally with a subscript: A, B, A_1, A_2 (up to 4 characters).</p>
+  </section>
+
+  <main class="panels">
+    <section class="panel panel-tt" aria-labelledby="tt-title">
+      <h2 id="tt-title">Truth Table</h2>
+      <div class="scroll">
+        <table class="tt" id="tt"></table>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="panel panel-km" aria-labelledby="km-title">
+      <h2 id="km-title">Karnaugh Map</h2>
+      <div id="kmap"></div>
+    </section>
+  </main>
+
+  <section class="panel panel-saved" aria-labelledby="saved-title">
+    <h2 id="saved-title">Saved Tables</h2>
+    <form id="save-form" class="save-form">
+      <input id="save-name" class="text-input" type="text" maxlength="60"
+             placeholder="Name this table" aria-label="Table name" autocomplete="off">
+      <button type="submit">Save</button>
+    </form>
+    <p id="save-status" class="status" role="status"></p>
+    <ul id="saved-list" class="saved-list"></ul>
+    <p id="saved-empty" class="status">No saved tables yet. Saved tables stay in this browser.</p>
+  </section>
+
+  <footer class="help">
+    Click a cell to cycle: blank → 0 → 1 → X → blank.
+    Table keys: 0, 1, X to set · Backspace to clear · ↑ ↓ to move.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

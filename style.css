@@ -1,0 +1,519 @@
+/* BoolWiz — strictly black (#000) and white (#fff). No other colors. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { color-scheme: light; }
+
+body {
+  margin: 0;
+  padding: 24px 16px 32px;
+  min-height: 100vh;
+  background: #fff;
+  color: #000;
+  font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #000;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+button {
+  font: inherit;
+  color: #000;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 0;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #000;
+  color: #fff;
+}
+
+button:focus-visible {
+  outline: 3px solid #000;
+  outline-offset: 2px;
+}
+
+/* ---------- Top bar ---------- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom: 4px solid #000;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.seg-group {
+  display: inline-flex;
+}
+
+.seg {
+  min-width: 44px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 700;
+}
+
+.seg + .seg {
+  margin-left: -2px;
+}
+
+.seg[aria-pressed="true"] {
+  background: #000;
+  color: #fff;
+}
+
+/* ---------- Panels ---------- */
+
+.panels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.panel {
+  flex: 1 1 320px;
+  max-width: 100%;
+  padding: 20px;
+  border: 3px solid #000;
+  background: #fff;
+}
+
+.panel-tt {
+  flex: 0 1 auto;
+}
+
+.scroll {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+/* ---------- Truth table ---------- */
+
+table.tt {
+  border-collapse: collapse;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px;
+}
+
+/* Every truth-table cell is a square (52 x 52) */
+table.tt th,
+table.tt td {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid #000;
+  text-align: center;
+  vertical-align: middle;
+}
+
+table.tt thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  font-weight: 700;
+  border-bottom: 3px solid #000;
+}
+
+/* Minterm index: its own column, first on the left, set apart by a heavy double rule */
+table.tt th.idx-h {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+  border-right: 4px double #000;
+}
+
+table.tt td.idx {
+  font-weight: 700;
+  border-right: 4px double #000;
+  background: #fff;
+}
+
+/* Variable headers: names rendered LaTeX-style (A_1 shows as A with subscript 1) */
+table.tt th.var-h {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+sub {
+  font-size: 0.7em;
+  line-height: 0;
+  vertical-align: -0.35em;
+}
+
+/* Output column: separated from the inputs by a heavy double rule */
+table.tt th.out-h {
+  border-left: 4px double #000;
+}
+
+table.tt td.out-td {
+  padding: 0;
+  border-left: 4px double #000;
+}
+
+button.out {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+button.out:hover {
+  filter: invert(1);
+  background: #fff;
+  color: #000;
+}
+
+/* ---------- Output states (shared by table + K-map) ---------- */
+
+.st-blank { background: #fff; color: #000; }
+.st-0     { background: #fff; color: #000; }
+.st-1     { background: #000; color: #fff; }
+.st-x {
+  background: repeating-linear-gradient(45deg, #000 0 1px, #fff 1px 6px);
+}
+
+/* 'X' (don't care): white plate over the hatch so the letter stays readable */
+.st-x .v {
+  display: inline-block;
+  padding: 0 6px;
+  background: #fff;
+  border: 1px solid #000;
+  color: #000;
+}
+
+/* ---------- Karnaugh map ---------- */
+
+#kmap {
+  display: flex;
+  justify-content: center;
+}
+
+.maps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 32px;
+}
+
+.map-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+table.kg {
+  border-collapse: collapse;
+  border: 3px solid #000;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+table.kg th,
+table.kg td {
+  border: 1px solid #000;
+}
+
+table.kg th {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  background: #fff;
+}
+
+table.kg th.col-h {
+  border-bottom: 2px solid #000;
+}
+
+table.kg th.row-h {
+  border-right: 2px solid #000;
+}
+
+table.kg th.corner {
+  position: relative;
+  min-width: 96px;
+  height: 42px;
+  padding: 0;
+  border-right: 2px solid #000;
+  border-bottom: 2px solid #000;
+  /* diagonal split: row vars bottom-left, column vars top-right */
+  background: linear-gradient(
+    to top right,
+    #fff calc(50% - 1px),
+    #000 calc(50% - 1px),
+    #000 calc(50% + 1px),
+    #fff calc(50% + 1px)
+  );
+}
+
+table.kg th.corner .c-row,
+table.kg th.corner .c-col {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 700;
+  background: #fff;
+  padding: 0 2px;
+}
+
+table.kg th.corner .c-row { left: 4px; bottom: 3px; }
+table.kg th.corner .c-col { right: 4px; top: 3px; }
+
+table.kg td {
+  padding: 0;
+}
+
+button.kcell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(52px, 12vw, 80px);
+  height: 64px;
+  padding: 0;
+  border: 0;
+  font-size: 28px;
+  font-weight: 700;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+button.kcell:hover {
+  filter: invert(1);
+  background: #fff;
+  color: #000;
+}
+
+button.kcell .mi {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.2;
+  background: #fff;
+  color: #000;
+}
+
+button.kcell.st-1 .mi {
+  background: #000;
+  color: #fff;
+}
+
+button.kcell.st-x .v {
+  font-size: 22px;
+}
+
+/* ---------- Variables panel ---------- */
+
+.panel-vars {
+  margin-bottom: 24px;
+}
+
+.var-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.var-count {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.var-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.var-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.var-cap {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+input.vname {
+  width: 7ch;
+  padding: 6px 8px;
+  border: 2px solid #000;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+}
+
+input.vname:focus {
+  outline: 3px solid #000;
+  outline-offset: 2px;
+}
+
+input.vname.bad {
+  outline: 2px dashed #000;
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 16px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Saved tables ---------- */
+
+.panel-saved {
+  margin-top: 24px;
+}
+
+.save-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+input.text-input {
+  flex: 1 1 220px;
+  max-width: 360px;
+  padding: 6px 8px;
+  border: 2px solid #000;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font: inherit;
+}
+
+input.text-input:focus {
+  outline: 3px solid #000;
+  outline-offset: 2px;
+}
+
+.status {
+  min-height: 1.4em;
+  margin: 12px 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.saved-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 2px solid #000;
+}
+
+.saved-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #000;
+}
+
+.saved-item .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.saved-item strong {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.saved-item small {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.saved-item .actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------- Stats + help ---------- */
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 2px solid #000;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.help {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 2px solid #000;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 480px) {
+  h1 { font-size: 22px; }
+  .panel { padding: 14px; }
+}
