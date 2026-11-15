@@ -12,6 +12,7 @@
     <div class="controls">
       <button type="button" id="clear">Clear</button>
       <button type="button" id="reset">Reset</button>
+      <button type="button" id="export">Export</button>
     </div>
   </header>
 
@@ -63,6 +64,17 @@
     Click a cell to cycle: blank → 0 → 1 → X → blank.
     Table keys: 0, 1, X to set · Backspace to clear · ↑ ↓ to move.
   </footer>
+
+  <dialog id="export-dlg" aria-labelledby="export-title">
+    <h2 id="export-title">Export</h2>
+    <div class="export-scroll">
+      <canvas id="export-canvas" role="img" aria-label="Truth table and Karnaugh map image"></canvas>
+    </div>
+    <div class="dlg-actions">
+      <button type="button" id="export-download">Download PNG</button>
+      <button type="button" id="export-close">Close</button>
+    </div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

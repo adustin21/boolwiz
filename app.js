@@ -396,6 +396,333 @@
     });
   }
 
+  // ---------- Export: canvas image of truth table + K-map ----------
+
+  const MONO = 'ui-monospace, Menlo, Consolas, "Liberation Mono", monospace';
+  const EX = {
+    pad: 24, gap: 32, halfGap: 16,
+    hdr: 44, row: 36, idxW: 48, varW: 48, outW: 52,          // truth table
+    rhW: 72, corner: 40, cellW: 48, cellH: 48, mapGap: 24, titleH: 24, // K-map
+  };
+
+  function exFont(ctx, size, weight = 700) {
+    ctx.font = `${weight} ${size}px ${MONO}`;
+  }
+
+  // "A_1" -> ["A", "1"] so the subscript can be drawn smaller, as nameHTML does on screen.
+  function splitName(name) {
+    const m = /^([A-Za-z])_([0-9]+)$/.exec(name);
+    return m ? [m[1], m[2]] : [name, ''];
+  }
+
+  function nameWidth(ctx, name, size) {
+    const [base, sub] = splitName(name);
+    exFont(ctx, size);
+    let w = ctx.measureText(base).width;
+    if (sub) {
+      exFont(ctx, size * 0.7);
+      w += ctx.measureText(sub).width;
+    }
+    return w;
+  }
+
+  // Draws one name left-aligned at x, centred on cy. Returns the width used.
+  function drawName(ctx, name, x, cy, size) {
+    const [base, sub] = splitName(name);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    exFont(ctx, size);
+    ctx.fillText(base, x, cy);
+    let w = ctx.measureText(base).width;
+    if (sub) {
+      exFont(ctx, size * 0.7);
+      ctx.fillText(sub, x + w, cy + size * 0.3);
+      w += ctx.measureText(sub).width;
+    }
+    return w;
+  }
+
+  function listWidth(ctx, list, size) {
+    return list.reduce((s, nm) => s + nameWidth(ctx, nm, size), 0)
+      + Math.max(0, list.length - 1) * size * 0.5;
+  }
+
+  function drawList(ctx, list, x, cy, size) {
+    let cx = x;
+    list.forEach((nm, k) => {
+      if (k) cx += size * 0.5;
+      cx += drawName(ctx, nm, cx, cy, size);
+    });
+  }
+
+  function drawCentered(ctx, text, cx, cy, size, weight = 700) {
+    exFont(ctx, size, weight);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, cy);
+  }
+
+  function drawHatch(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let k = -h; k < w; k += 6) {
+      ctx.moveTo(x + k, y + h);
+      ctx.lineTo(x + k + h, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cell look matches the screen: 1 = black, X = hatched with a white plate, 0/blank = white.
+  function drawState(ctx, v, x, y, w, h, size) {
+    ctx.fillStyle = v === 1 ? '#000' : '#fff';
+    ctx.fillRect(x, y, w, h);
+    if (v === null) return;
+    if (v === 'X') drawHatch(ctx, x, y, w, h);
+
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    if (v === 'X') {
+      exFont(ctx, size);
+      const tw = ctx.measureText('X').width + 12;
+      const th = size * 1.3;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx - tw / 2, cy - th / 2, tw, th);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - tw / 2 + 0.5, cy - th / 2 + 0.5, tw - 1, th - 1);
+      ctx.fillStyle = '#000';
+    } else {
+      ctx.fillStyle = v === 1 ? '#fff' : '#000';
+    }
+    drawCentered(ctx, String(v), cx, cy, size);
+  }
+
+  // One truth-table block: m | variables | F, rows from..from+count-1.
+  function drawTruthTable(ctx, x, y, from, count) {
+    const w = EX.idxW + n * EX.varW + EX.outW;
+    const h = EX.hdr + count * EX.row;
+    const varsX = x + EX.idxW;
+    const outX = varsX + n * EX.varW;
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, w, h);
+
+    // Header: black "m" cell, variable names (repeated on every block), F
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, y, EX.idxW, EX.hdr);
+    ctx.fillStyle = '#fff';
+    drawCentered(ctx, 'm', x + EX.idxW / 2, y + EX.hdr / 2, 15);
+    ctx.fillStyle = '#000';
+    for (let j = 0; j < n; j++) {
+      const cx = varsX + j * EX.varW + EX.varW / 2;
+      const tw = nameWidth(ctx, names[j], 17);
+      drawName(ctx, names[j], cx - tw / 2, y + EX.hdr / 2, 17);
+    }
+    drawCentered(ctx, 'F', outX + EX.outW / 2, y + EX.hdr / 2, 15);
+
+    // Body
+    for (let i = 0; i < count; i++) {
+      const m = from + i;
+      const ry = y + EX.hdr + i * EX.row;
+      const cy = ry + EX.row / 2;
+      ctx.fillStyle = '#000';
+      drawCentered(ctx, String(m), x + EX.idxW / 2, cy, 15);
+      for (let j = 0; j < n; j++) {
+        const bit = (m >> (n - 1 - j)) & 1;
+        drawCentered(ctx, String(bit), varsX + j * EX.varW + EX.varW / 2, cy, 15, 400);
+      }
+      drawState(ctx, outputs[m], outX, ry, EX.outW, EX.row, 16);
+    }
+
+    // Grid
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < count; i++) {
+      const ly = y + EX.hdr + i * EX.row;
+      ctx.moveTo(x, ly);
+      ctx.lineTo(x + w, ly);
+    }
+    for (let j = 1; j < n; j++) {
+      const vx = varsX + j * EX.varW;
+      ctx.moveTo(vx, y);
+      ctx.lineTo(vx, y + h);
+    }
+    ctx.stroke();
+
+    // Heavier rules: under the header, and beside the minterm and output columns
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y + EX.hdr);
+    ctx.lineTo(x + w, y + EX.hdr);
+    ctx.moveTo(varsX, y);
+    ctx.lineTo(varsX, y + h);
+    ctx.moveTo(outX, y);
+    ctx.lineTo(outX, y + h);
+    ctx.stroke();
+
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+
+  // K-map for the current variable count, one panel per value of any fifth variable.
+  function drawKmap(ctx, x, y) {
+    const { r, c } = layoutFor(n);
+    const extra = n - r - c;
+    const panels = 1 << extra;
+    const rowNames = names.slice(0, r);
+    const colNames = names.slice(r, r + c);
+    const mapW = EX.rhW + (1 << c) * EX.cellW;
+    const titleH = extra ? EX.titleH : 0;
+    const bodyH = EX.corner + (1 << r) * EX.cellH;
+
+    for (let p = 0; p < panels; p++) {
+      const mx = x + p * (mapW + EX.mapGap);
+      const ty = y + titleH;      // top of the grid
+      const gy = ty + EX.corner;  // top of the body rows
+      const gx = mx + EX.rhW;     // left edge of the first column
+      const gxEnd = gx + (1 << c) * EX.cellW;
+
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(mx, y, mapW, titleH + bodyH);
+
+      if (extra) {
+        const label = ` = ${p}`;
+        exFont(ctx, 12);
+        const lw = ctx.measureText(label).width;
+        const tw = nameWidth(ctx, names[n - 1], 12) + lw;
+        const sx = mx + mapW / 2 - tw / 2;
+        const cy = y + titleH / 2;
+        ctx.fillStyle = '#000';
+        drawName(ctx, names[n - 1], sx, cy, 12);
+        exFont(ctx, 12);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, sx + tw - lw, cy);
+      }
+
+      // Corner: diagonal split, row variables bottom-left, column variables top-right
+      ctx.fillStyle = '#000';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(mx, ty);
+      ctx.lineTo(gx, gy);
+      ctx.stroke();
+      drawList(ctx, rowNames, mx + 6, gy - 11, 13);
+      drawList(ctx, colNames, gx - 6 - listWidth(ctx, colNames, 13), ty + 11, 13);
+
+      // Column headers (Gray code order)
+      ctx.fillStyle = '#000';
+      for (let k = 0; k < (1 << c); k++) {
+        drawCentered(ctx, bin(gray(k), c), gx + k * EX.cellW + EX.cellW / 2, ty + EX.corner / 2, 13);
+      }
+
+      // Row headers and cells
+      for (let k = 0; k < (1 << r); k++) {
+        const rc = gray(k);
+        const ry = gy + k * EX.cellH;
+        ctx.fillStyle = '#000';
+        drawCentered(ctx, bin(rc, r), mx + EX.rhW / 2, ry + EX.cellH / 2, 13);
+        for (let m = 0; m < (1 << c); m++) {
+          const cc = gray(m);
+          const idx = (((rc << c) | cc) << extra) | p; // same mapping as buildKmap
+          const cx = gx + m * EX.cellW;
+          drawState(ctx, outputs[idx], cx, ry, EX.cellW, EX.cellH, 22);
+          exFont(ctx, 9, 400);
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillStyle = outputs[idx] === 1 ? '#fff' : '#000';
+          ctx.fillText(String(idx), cx + 3, ry + 2);
+        }
+      }
+
+      // Grid
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k <= (1 << r); k++) {
+        const ly = gy + k * EX.cellH;
+        ctx.moveTo(mx, ly);
+        ctx.lineTo(gxEnd, ly);
+      }
+      ctx.moveTo(mx, ty);
+      ctx.lineTo(gxEnd, ty);
+      for (let m = 0; m <= (1 << c); m++) {
+        const lx = gx + m * EX.cellW;
+        ctx.moveTo(lx, ty);
+        ctx.lineTo(lx, gy + (1 << r) * EX.cellH);
+      }
+      ctx.moveTo(mx, ty);
+      ctx.lineTo(mx, gy + (1 << r) * EX.cellH);
+      ctx.stroke();
+
+      ctx.lineWidth = 3;
+      ctx.strokeRect(mx + 1.5, ty + 1.5, mapW - 3, bodyH - 3);
+    }
+  }
+
+  // Draws the whole export into the canvas. Four or more variables split the truth table
+  // into two side-by-side halves, each with the variable header.
+  function renderExport(canvas) {
+    const ctx = canvas.getContext('2d');
+    const S = Math.max(2, window.devicePixelRatio || 1);
+    const halves = n >= 4;
+    const rowsPerBlock = halves ? 1 << (n - 1) : 1 << n;
+    const blockW = EX.idxW + n * EX.varW + EX.outW;
+    const ttW = halves ? blockW * 2 + EX.halfGap : blockW;
+    const ttH = EX.hdr + rowsPerBlock * EX.row;
+
+    const { r, c } = layoutFor(n);
+    const extra = n - r - c;
+    const panels = 1 << extra;
+    const mapW = EX.rhW + (1 << c) * EX.cellW;
+    const kW = panels * mapW + (panels - 1) * EX.mapGap;
+    const kH = (extra ? EX.titleH : 0) + EX.corner + (1 << r) * EX.cellH;
+
+    const W = EX.pad * 2 + ttW + EX.gap + kW;
+    const totalH = EX.pad * 2 + Math.max(ttH, kH);
+
+    canvas.width = Math.round(W * S);
+    canvas.height = Math.round(totalH * S);
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${totalH}px`;
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, totalH);
+
+    drawTruthTable(ctx, EX.pad, EX.pad, 0, rowsPerBlock);
+    if (halves) {
+      drawTruthTable(ctx, EX.pad + blockW + EX.halfGap, EX.pad, rowsPerBlock, rowsPerBlock);
+    }
+    drawKmap(ctx, EX.pad + ttW + EX.gap, EX.pad);
+
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, W - 2, totalH - 2);
+  }
+
+  function downloadExport() {
+    $('#export-canvas').toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = el('a');
+      a.href = url;
+      a.download = `boolwiz-${n}var.png`;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }
+
   // ---------- Events ----------
 
   document.querySelectorAll('.seg').forEach((b) => {
@@ -475,6 +802,13 @@
     const i = Number(btn.dataset.i);
     setOutput(i, nextValue(outputs[i]));
   });
+
+  $('#export').addEventListener('click', () => {
+    renderExport($('#export-canvas'));
+    $('#export-dlg').showModal();
+  });
+  $('#export-close').addEventListener('click', () => $('#export-dlg').close());
+  $('#export-download').addEventListener('click', downloadExport);
 
   $('#save-form').addEventListener('submit', (e) => {
     e.preventDefault();
